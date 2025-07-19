@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <title>Yuki</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <h2>Yuki</h2>
+      <button id="reset-btn" title="Clear chat">⟳</button>
+    </div>
+    <div class="chat-history" id="chat-history">
+      {% for msg in chat_history %}
+        <div class="msg {{msg.role}}">
+          <div class="bubble-wrap">
+            <span class="sender">
+              {% if msg.role=="user" %}You{% else %}Yuki{% endif %}
+            </span>
+            <span class="bubble">{{msg.content}}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <form id="chat-form" autocomplete="off">
+      <input id="chat-input" type="text" placeholder="Type a message to Yuki..." autocomplete="on" autofocus required>
+      <button type="submit">➤</button>
+    </form>
+  </div>
+  <script>
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const chatHistory = document.getElementById('chat-history');
+    const resetBtn = document.getElementById('reset-btn');
+    let streaming = false;
+
+    chatForm.onsubmit = async (e) => {
+      e.preventDefault();
+      if(streaming) return;
+
+      const message = chatInput.value.trim();
+      if(!message) return;
+
+      // Display user msg (left)
+      addMsg('user', message);
+
+      chatInput.value = '';
+      streaming = true;
+      addMsg('assistant', '', true); // "pending" class
+
+      // Send user message to backend
+      await fetch('/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message })
+      });
+
+      // Stream Yuki's reply (right)
+      const yukiMsgDiv = document.querySelector('.msg.assistant.pending .bubble');
+      const resp = await fetch('/stream', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message })
+      });
+      const reader = resp.body.getReader();
+      let yukiMsg = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = new TextDecoder().decode(value);
+        yukiMsg += chunk;
+        yukiMsgDiv.textContent = yukiMsg;
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+      }
+      yukiMsgDiv.parentNode.parentNode.classList.remove('pending');
+      streaming = false;
+    };
+
+    resetBtn.onclick = async () => {
+      await fetch('/reset', { method: 'POST' });
+      chatHistory.innerHTML = '';
+    };
+
+    function addMsg(role, content, pending=false) {
+      const div = document.createElement('div');
+      div.className = `msg ${role}` + (pending ? ' pending' : '');
+      div.innerHTML =
+        `<div class="bubble-wrap">
+          <span class="sender">${role==='user'?'You':'Yuki'}</span>
+          <span class="bubble">${content}</span>
+        </div>`;
+      chatHistory.appendChild(div);
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+  </script>
+</body>
+</html>
