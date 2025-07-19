@@ -5,3 +5,4 @@ venv/
 *.pyc
 *.db
 .DS_Store
+README.Docker.md
